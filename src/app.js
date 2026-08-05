@@ -9,7 +9,7 @@ app.use(cookieParser());
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://gen-ai-sigma-gold.vercel.app",
+  "https://gen-ai-backend-o828.onrender.com",
 ];
 
 app.use(
