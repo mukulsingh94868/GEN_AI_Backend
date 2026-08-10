@@ -2,95 +2,15 @@ import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import puppeteer from "puppeteer";
+import {
+  interviewReportSchema,
+  mockInterviewAnswerEvaluationSchema,
+  mockInterviewFinalReportSchema,
+  mockInterviewQuestionSchema,
+} from "../schema/zodSchema.js";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GOOGLE_GENAI_API_KEY,
-});
-
-const interviewReportSchema = z.object({
-  matchScore: z
-    .number()
-    .describe(
-      "A score between 0 and 100 indicating how well the candidate's profile matches the job describe",
-    ),
-  technicalQuestions: z
-    .array(
-      z.object({
-        question: z
-          .string()
-          .describe("The technical question can be asked in the interview"),
-        intention: z
-          .string()
-          .describe("The intention of interviewer behind asking this question"),
-        answer: z
-          .string()
-          .describe(
-            "How to answer this question, what points to cover, what approach to take etc.",
-          ),
-      }),
-    )
-    .describe(
-      "Technical questions that can be asked in the interview along with their intention and how to answer them",
-    ),
-  behavioralQuestions: z
-    .array(
-      z.object({
-        question: z
-          .string()
-          .describe("The technical question can be asked in the interview"),
-        intention: z
-          .string()
-          .describe("The intention of interviewer behind asking this question"),
-        answer: z
-          .string()
-          .describe(
-            "How to answer this question, what points to cover, what approach to take etc.",
-          ),
-      }),
-    )
-    .describe(
-      "Behavioral questions that can be asked in the interview along with their intention and how to answer them",
-    ),
-  skillGaps: z
-    .array(
-      z.object({
-        skill: z.string().describe("The skill which the candidate is lacking"),
-        severity: z
-          .enum(["low", "medium", "high"])
-          .describe(
-            "The severity of this skill gap, i.e. how important is this skill for the job and how much it can impact the candidate's chances",
-          ),
-      }),
-    )
-    .describe(
-      "List of skill gaps in the candidate's profile along with their severity",
-    ),
-  preparationPlan: z
-    .array(
-      z.object({
-        day: z
-          .number()
-          .describe("The day number in the preparation plan, starting from 1"),
-        focus: z
-          .string()
-          .describe(
-            "The main focus of this day in the preparation plan, e.g. data structures, system design, mock interviews etc.",
-          ),
-        tasks: z
-          .array(z.string())
-          .describe(
-            "List of tasks to be done on this day to follow the preparation plan, e.g. read a specific book or article, solve a set of problems, watch a video etc.",
-          ),
-      }),
-    )
-    .describe(
-      "A day-wise preparation plan for the candidate to follow in order to prepare for the interview effectively",
-    ),
-  title: z
-    .string()
-    .describe(
-      "The title of the job for which the interview report is generated",
-    ),
 });
 
 async function generateInterviewReport({
@@ -174,4 +94,222 @@ async function generateResumePdf({ resume, selfDescription, jobDescription }) {
   return pdfBuffer;
 }
 
-export { generateInterviewReport, generateResumePdf };
+function parseAiJsonResponse(response) {
+  try {
+    return JSON.parse(response.text);
+  } catch (error) {
+    throw new Error(`Failed to parse AI response: ${error.message}`);
+  }
+}
+
+async function generateFirstMockInterviewQuestion({
+  resume,
+  selfDescription,
+  jobDescription,
+  skillGaps,
+  title,
+  matchScore,
+  interviewType,
+  difficulty,
+}) {
+  const prompt = `You are an expert interviewer conducting a mock interview for a candidate applying to the job "${title}".
+
+                        Interview Type: ${interviewType}
+                        Difficulty: ${difficulty}
+
+                        Job Description:
+                        ${jobDescription}
+
+                        Candidate Resume:
+                        ${resume}
+
+                        Candidate Self Description:
+                        ${selfDescription}
+
+                        Candidate Skill Gaps:
+                        ${JSON.stringify(skillGaps || [])}
+
+                        Candidate Match Score: ${matchScore}
+
+                        Generate the FIRST interview question for this mock interview. The question must:
+                        - be tailored to the candidate's resume, the job description and the identified skill gaps
+                        - target one of the candidate's weakest areas, especially a high severity skill gap
+                        - be appropriate for a ${difficulty} difficulty ${interviewType} interview
+                        - be self-contained and answerable by the candidate in 2-3 minutes
+
+                        Return a JSON object containing the question, the intention of the interviewer behind asking it, and its category which can be "technical", "behavioral" or "mixed".
+                    `;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: zodToJsonSchema(mockInterviewQuestionSchema),
+    },
+  });
+
+  return parseAiJsonResponse(response);
+}
+
+async function generateNextMockInterviewQuestion({
+  resume,
+  selfDescription,
+  jobDescription,
+  skillGaps,
+  title,
+  interviewType,
+  difficulty,
+  previousQuestion,
+  previousAnswer,
+  previousEvaluation,
+  questionHistory,
+}) {
+  const prompt = `You are an expert interviewer conducting a mock interview for a candidate applying to the job "${title}".
+
+                        Interview Type: ${interviewType}
+                        Difficulty: ${difficulty}
+
+                        Job Description:
+                        ${jobDescription}
+
+                        Candidate Resume:
+                        ${resume}
+
+                        Candidate Self Description:
+                        ${selfDescription}
+
+                        Candidate Skill Gaps:
+                        ${JSON.stringify(skillGaps || [])}
+
+                        Question just asked:
+                        ${previousQuestion}
+
+                        Candidate's answer:
+                        ${previousAnswer}
+
+                        Evaluation of that answer:
+                        ${JSON.stringify(previousEvaluation)}
+
+                        Questions already asked in this interview (do NOT repeat or closely resemble these):
+                        ${JSON.stringify(questionHistory)}
+
+                        Generate the NEXT interview question for this mock interview. The question must:
+                        - adapt to the candidate's performance on the previous question, digging deeper into areas where they were weak and not spending too much time on areas where they were strong
+                        - not repeat or closely resemble any of the already asked questions
+                        - be appropriate for a ${difficulty} difficulty ${interviewType} interview
+                        - be self-contained and answerable by the candidate in 2-3 minutes
+
+                        Return a JSON object containing the question, the intention of the interviewer behind asking it, and its category which can be "technical", "behavioral" or "mixed".
+                    `;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: zodToJsonSchema(mockInterviewQuestionSchema),
+    },
+  });
+
+  return parseAiJsonResponse(response);
+}
+
+async function evaluateMockInterviewAnswer({
+  question,
+  intention,
+  answer,
+  resume,
+  selfDescription,
+  jobDescription,
+  interviewType,
+  difficulty,
+}) {
+  const prompt = `You are an expert interviewer evaluating a candidate's answer during a ${interviewType} mock interview at ${difficulty} difficulty.
+
+                        Question asked:
+                        ${question}
+
+                        Intention of the question:
+                        ${intention}
+
+                        Candidate's answer:
+                        ${answer}
+
+                        Candidate Resume:
+                        ${resume}
+
+                        Candidate Self Description:
+                        ${selfDescription}
+
+                        Job Description:
+                        ${jobDescription}
+
+                        Evaluate the candidate's answer on clarity, correctness, structure, depth and relevance to the question. Return a JSON object with:
+                        - score: a number between 0 and 100
+                        - strengths: an array of specific strengths in the candidate's answer
+                        - weaknesses: an array of specific weaknesses or gaps in the candidate's answer
+                        - feedback: concise and actionable feedback for the candidate
+                        - idealAnswer: a model ideal answer the candidate should have given
+                    `;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: zodToJsonSchema(mockInterviewAnswerEvaluationSchema),
+    },
+  });
+
+  return parseAiJsonResponse(response);
+}
+
+async function generateMockInterviewFinalReport({
+  title,
+  jobDescription,
+  interviewType,
+  difficulty,
+  questionEvaluations,
+}) {
+  const prompt = `You are an expert interviewer who just finished conducting a ${interviewType} mock interview at ${difficulty} difficulty for the job "${title}".
+
+                        Job Description:
+                        ${jobDescription}
+
+                        Here is the question-by-question performance of the candidate:
+                        ${JSON.stringify(questionEvaluations)}
+
+                        Generate a comprehensive final interview report for the candidate as a JSON object with:
+                        - overallScore: a number between 0 and 100
+                        - technicalScore: a number between 0 and 100
+                        - communicationScore: a number between 0 and 100
+                        - problemSolvingScore: a number between 0 and 100
+                        - confidenceScore: a number between 0 and 100
+                        - strengths: an array of strings summarizing the candidate's overall strengths
+                        - weaknesses: an array of strings summarizing the candidate's overall weaknesses
+                        - recommendations: an array of strings with actionable steps to improve before the real interview
+                        - summary: a paragraph summarizing the overall performance of the candidate
+                        - hiringReadiness: one of "low", "medium" or "high"
+                    `;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: zodToJsonSchema(mockInterviewFinalReportSchema),
+    },
+  });
+
+  return parseAiJsonResponse(response);
+}
+
+export {
+  generateInterviewReport,
+  generateResumePdf,
+  generateFirstMockInterviewQuestion,
+  generateNextMockInterviewQuestion,
+  evaluateMockInterviewAnswer,
+  generateMockInterviewFinalReport,
+};

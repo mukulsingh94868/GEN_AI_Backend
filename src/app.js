@@ -35,8 +35,10 @@ app.use(express.static("public"));
 /* Routes */
 import authRouter from "./routes/auth.routes.js";
 import interviewRouter from "./routes/interview.routes.js";
+import mockInterviewRouter from "./routes/mockInterview.route.js";
 
 app.use("/api/auth", authRouter);
 app.use("/api/interview", interviewRouter);
+app.use("/api/mock-interview", mockInterviewRouter);
 
 export default app;
