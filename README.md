@@ -1,6 +1,6 @@
 # GEN AI Backend
 
-A Node.js backend for generating AI-powered interview reports and tailored resumes using Google Gemini (GenAI). This repository includes user authentication, interview report creation from a resume and job description, and PDF resume generation.
+A Node.js backend for generating AI-powered interview reports, tailored resumes, and interactive mock interviews using Google Gemini (GenAI). This repository includes user authentication, interview report creation from a resume and job description, PDF resume generation, and mock interview sessions with AI question generation, answer evaluation, and final reporting.
 
 ## Features
 
@@ -9,6 +9,8 @@ A Node.js backend for generating AI-powered interview reports and tailored resum
 - Upload resume PDF and generate interview report based on resume, self description, and job description
 - Retrieve saved interview reports and individual report details
 - Generate a downloadable resume PDF tailored to the job description
+- Mock interview sessions built on a saved interview report (technical, behavioral, or mixed) with configurable difficulty and question count
+- AI-driven question generation, answer evaluation, and final mock interview report
 - Uses Google GenAI Gemini for AI content generation
 
 ## Tech Stack
@@ -101,6 +103,37 @@ The app listens on port `5000` by default.
   - Protected route
   - Generates a downloadable resume PDF from the saved report
 
+### Mock Interview
+
+- `POST /api/mock-interview/`
+  - Protected route
+  - Body: `{ interviewReportId, interviewType, difficulty, totalQuestions }`
+  - `interviewType`: `technical`, `behavioral`, or `mixed`
+  - `difficulty`: `easy`, `medium`, or `hard`
+  - `totalQuestions`: integer between 1 and 20
+  - Creates a mock interview session based on a saved interview report and generates the first question
+
+- `POST /api/mock-interview/:id/answer`
+  - Protected route
+  - Body: `{ answer }`
+  - Evaluates the current answer and generates the next question
+
+- `POST /api/mock-interview/:id/complete`
+  - Protected route
+  - Generates the final report after all questions are answered
+
+- `GET /api/mock-interview/:id`
+  - Protected route
+  - Returns a single mock interview session by ID
+
+- `GET /api/mock-interview/`
+  - Protected route
+  - Returns all mock interview sessions for the current user
+
+- `PATCH /api/mock-interview/:id/abandon`
+  - Protected route
+  - Abandons an in-progress mock interview session
+
 ## Notes
 
 - The backend uses cookies for authentication, so client requests must support cookies.
@@ -115,8 +148,9 @@ The app listens on port `5000` by default.
 - `src/controllers/` - route logic
 - `src/middlewares/` - auth and file upload middleware
 - `src/models/` - Mongoose models
+- `src/schema/` - Zod validation schemas
 - `src/routes/` - API route definitions
-- `src/services/ai.service.js` - AI report and resume PDF generation
+- `src/services/ai.service.js` - AI report, resume PDF, and mock interview generation
 
 ## License
 
