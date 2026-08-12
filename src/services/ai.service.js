@@ -19,9 +19,11 @@ async function generateInterviewReport({
   jobDescription,
 }) {
   const prompt = `Generate an interview report for a candidate with the following details:
-                        Resume: ${resume}
-                        Self Description: ${selfDescription}
+                        Resume: ${resume || "Not provided"}
+                        Self Description: ${selfDescription || "Not provided"}
                         Job Description: ${jobDescription}
+
+                        Use whichever of the resume or self description is provided to analyze the candidate. If only one of them is available, base the report solely on that. If neither is provided, return a clear error.
 `;
 
   const response = await ai.models.generateContent({
@@ -66,9 +68,11 @@ async function generateResumePdf({ resume, selfDescription, jobDescription }) {
   });
 
   const prompt = `Generate resume for a candidate with the following details:
-                        Resume: ${resume}
-                        Self Description: ${selfDescription}
+                        Resume: ${resume || "Not provided"}
+                        Self Description: ${selfDescription || "Not provided"}
                         Job Description: ${jobDescription}
+
+                        Use whichever of the resume or self description is provided to build the resume. If only one of them is available, base the resume solely on that.
 
                         the response should be a JSON object with a single field "html" which contains the HTML content of the resume which can be converted to PDF using any library like puppeteer.
                         The resume should be tailored for the given job description and should highlight the candidate's strengths and relevant experience. The HTML content should be well-formatted and structured, making it easy to read and visually appealing.
